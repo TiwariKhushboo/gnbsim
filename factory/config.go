@@ -60,7 +60,9 @@ type HttpServer struct {
 }
 
 type Logger struct {
-	LogLevel string `yaml:"logLevel"`
+	AppLogLevel string `yaml:"appLogLevel"`
+	NgapLogLevel string `yaml:"ngapLogLevel"`
+	NasLogLevel string `yaml:"nasLogLevel"`
 }
 
 func (c *Config) GetVersion() string {

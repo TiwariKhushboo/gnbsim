@@ -108,6 +108,7 @@ type Profile struct {
 	ExecInParallel bool   `yaml:"execInParallel" json:"execInParallel"`
 	StepTrigger    bool   `yaml:"stepTrigger" json:"stepTrigger"`
 	RetransMsg     bool   `yaml:"retransMsg" json:"retransMsg"`
+	UeConcurrent	int    `yaml:"ueConcurrent" json:"ueConcurrent"`
 }
 
 func init() {

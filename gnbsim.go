@@ -74,14 +74,22 @@ func action(ctx context.Context, c *cli.Command) error {
 			}
 		}()
 	}
-	lvl, errLevel := zapcore.ParseLevel(config.Logger.LogLevel)
+	appLvl, errLevel := zapcore.ParseLevel(config.Logger.AppLogLevel)
 	if errLevel != nil {
 		logger.AppLog.Errorln("can not parse input level")
 	}
-	logger.AppLog.Infoln("setting log level to:", lvl)
-	logger.SetLogLevel(lvl)
-	ngapLogger.SetLogLevel(lvl)
-	nasLogger.SetLogLevel(lvl)
+	ngapLvl, errLevel := zapcore.ParseLevel(config.Logger.NgapLogLevel)
+	if errLevel != nil {
+		logger.AppLog.Errorln("can not parse input level")
+	}
+	nasLvl, errLevel := zapcore.ParseLevel(config.Logger.NasLogLevel)
+	if errLevel != nil {
+		logger.AppLog.Errorln("can not parse input level")
+	}
+	logger.AppLog.Infoln("setting log level to:", appLvl)
+	logger.SetLogLevel(appLvl)
+	ngapLogger.SetLogLevel(ngapLvl)
+	nasLogger.SetLogLevel(nasLvl)
 
 	err = prof.InitializeAllProfiles()
 	if err != nil {

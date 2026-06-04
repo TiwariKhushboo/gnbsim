@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	// "time"
 
 	"github.com/omec-project/gnbsim/common"
 	"github.com/omec-project/gnbsim/factory"
@@ -152,36 +153,110 @@ func ExecuteProfile(profile *profctx.Profile, summaryChan chan common.InterfaceM
 		}
 	}()
 	imsi := profile.Imsi
-	for count := 1; count <= profile.UeCount; count++ {
+	maxConcurrent := profile.UeConcurrent
+	totalUEs := profile.UeCount
+	profile.Log.Infoln("maxConcurrent:", maxConcurrent, ", totalUEs:", totalUEs)
+
+	if profile.ExecInParallel {
+		profile.Log.Infoln("ExecuteProfile ExecInParallel true. Starting UE execution in parallel")
+
+		if maxConcurrent <= 0 {
+			err := fmt.Errorf("invalid ueConcurrent value:%v. It should be greater than 0", maxConcurrent)
+			summary.ErrorList = append(summary.ErrorList, err)
+			summaryChan <- summary
+			return
+		}
+
+		if maxConcurrent > totalUEs {
+			profile.Log.Warnf("Max concurrent UEs (%d) exceeds total UEs (%d). Adjusting max concurrent to total UEs.", maxConcurrent, totalUEs)
+			maxConcurrent = totalUEs
+		}
+
+		jobs := make(chan string, totalUEs)
+
+		for count := 1; count <= totalUEs; count++ {
+			imsiStr := makeImsiStr(profile, imsi)
+			jobs <- imsiStr
+			imsi++
+		}
+		close(jobs)
+
+		for i := 0; i < maxConcurrent; i++ {
+			// add delay
+			//time.Sleep(time.Millisecond * 10)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for imsiStr := range jobs {
+					pCtx := profile.PSimUe[imsiStr]
+					err := simue.ImsiStateMachine(profile, pCtx, imsiStr, summaryChan)
+					// Execution for the UE is complete. Count UE result as success or failure
+					Mu.Lock()
+					if err != nil {
+						summary.UeFailedCount++
+						summary.ErrorList = append(summary.ErrorList, err)
+					} else {
+						summary.UePassedCount++
+					}
+					Mu.Unlock()
+				}
+			}()
+		}
+
+		profile.Log.Infoln("Parallel execution scheduled, waiting for completion")
+		wg.Wait()
+		profile.Log.Infoln("ExecuteProfile ended")
+		return
+	} 
+
+	profile.Log.Infoln("ExecuteProfile ExecInParallel false. Starting UE execution sequentially")
+
+	for count := 1; count <= totalUEs; count++ {
 		imsiStr := makeImsiStr(profile, imsi)
-		imsi++
-		wg.Add(1)
+		imsi++ 
 		pCtx := profile.PSimUe[imsiStr]
 
-		go func(pCtx *profctx.ProfileUeContext) {
-			defer wg.Done()
-			err := simue.ImsiStateMachine(profile, pCtx, imsiStr, summaryChan)
-			// Execution for the UE is complete. Count UE result as success or failure
-			Mu.Lock()
-			if err != nil {
-				summary.UeFailedCount++
-				summary.ErrorList = append(summary.ErrorList, err)
-			} else {
-				summary.UePassedCount++
-			}
-			Mu.Unlock()
-		}(pCtx)
-
-		if !profile.ExecInParallel {
-			profile.Log.Infoln("ExecuteProfile ExecInParallel false. Waiting for UEs to finish procesessing")
-			wg.Wait()
+		err := simue.ImsiStateMachine(profile, pCtx, imsiStr, summaryChan)
+		// Execution for the UE is complete. Count UE result as success or failure
+		if err != nil {
+			summary.UeFailedCount++
+			summary.ErrorList = append(summary.ErrorList, err)
+		} else {
+			summary.UePassedCount++
 		}
 	}
-	if profile.ExecInParallel {
-		profile.Log.Infoln("ExecuteProfile ExecInParallel true. Waiting for for all UEs to finish processing")
-		wg.Wait()
-	}
+
 	profile.Log.Infoln("ExecuteProfile ended")
+	// for count := 1; count <= profile.UeCount; count++ {
+	// 	imsiStr := makeImsiStr(profile, imsi)
+	// 	imsi++
+	// 	wg.Add(1)
+	// 	pCtx := profile.PSimUe[imsiStr]
+
+	// 	go func(pCtx *profctx.ProfileUeContext) {
+	// 		defer wg.Done()
+	// 		err := simue.ImsiStateMachine(profile, pCtx, imsiStr, summaryChan)
+	// 		// Execution for the UE is complete. Count UE result as success or failure
+	// 		Mu.Lock()
+	// 		if err != nil {
+	// 			summary.UeFailedCount++
+	// 			summary.ErrorList = append(summary.ErrorList, err)
+	// 		} else {
+	// 			summary.UePassedCount++
+	// 		}
+	// 		Mu.Unlock()
+	// 	}(pCtx)
+
+	// 	if !profile.ExecInParallel {
+	// 		profile.Log.Infoln("ExecuteProfile ExecInParallel false. Waiting for UEs to finish procesessing")
+	// 		wg.Wait()
+	// 	}
+	// }
+	// if profile.ExecInParallel {
+	// 	profile.Log.Infoln("ExecuteProfile ExecInParallel true. Waiting for for all UEs to finish processing")
+	// 	wg.Wait()
+	// }
+	// profile.Log.Infoln("ExecuteProfile ended")
 }
 
 // enable step trigger only if execParallel is enabled in profile
