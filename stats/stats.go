@@ -114,12 +114,13 @@ var (
 	StatsTransTable map[uint64]*StatisticsEvent
 )
 
-var (
-	firstRegReqTime time.Time
-	lastRegCompTime  time.Time
-)
+// var (
+// 	firstRegReqTime time.Time
+// 	lastRegCompTime  time.Time
+// )
 
-var regEventsPerSecond = make(map[int64]int)
+// var regEventsPerSecond = make(map[int64]int)
+// var totalRegCompleted int64
 
 func init() {
 	// create channel
@@ -313,18 +314,19 @@ func readStats() {
 					ue := getUe(t.Supi)
 					switch t.EType {
 					case REG_REQ_OUT:
-						if firstRegReqTime.IsZero() {
-							firstRegReqTime = t.T
-						}
+						// if firstRegReqTime.IsZero() {
+						// 	firstRegReqTime = t.T
+						// }
 						ue.CReg.RegReqOutTime = t.T
 					case AUTH_RSP_OUT:
 						ue.CReg.AuthRspOutTime = t.T
 					case SECM_CMP_OUT:
 						ue.CReg.SecCmdCmpOutTime = t.T
 					case REG_COMP_OUT:
-						lastRegCompTime = t.T
-						sec := t.T.Unix()
-						regEventsPerSecond[sec]++
+						// atomic.AddInt64(&totalRegCompleted, 1)
+						// lastRegCompTime = t.T
+						// sec := t.T.Unix()
+						// regEventsPerSecond[sec]++
 						ue.CReg.RegProcTime = ue.CReg.RegReqAuthReq + ue.CReg.AuthRspSecMReq + ue.CReg.SecModeRspICReq
 						ue.Reg = append(ue.Reg, ue.CReg) // push the history
 						ue.CReg = Registration{}
@@ -363,44 +365,40 @@ func DumpStats() {
 	}
 	sort.Strings(ues)
 
-	logger.StatsLog.Infof("First Registration Request Time: %v", firstRegReqTime)
-	logger.StatsLog.Infof("Last Registration Complete Time: %v", lastRegCompTime)
-	if !firstRegReqTime.IsZero() && !lastRegCompTime.IsZero() {
-		totalDuration := lastRegCompTime.Sub(firstRegReqTime)
-		totalSecs := totalDuration.Seconds()
-		totalRegs := 0
+	// logger.StatsLog.Infof("First Registration Request Time: %v", firstRegReqTime)
+	// logger.StatsLog.Infof("Last Registration Complete Time: %v", lastRegCompTime)
+	// if !firstRegReqTime.IsZero() && !lastRegCompTime.IsZero() {
+	// 	totalDuration := lastRegCompTime.Sub(firstRegReqTime)
+	// 	totalSecs := totalDuration.Seconds()
 
-		// Count all completed registrations
-		for _, ue := range ues {
-			totalRegs += len(UeStatsTable[ue].Reg)
-		}
+	// 	// Count all completed registrations
+	// 	totalRegs := totalRegCompleted
+	// 	rps := float64(totalRegs) / totalSecs
 
-		rps := float64(totalRegs) / totalSecs
-
-		logger.StatsLog.Infof("========== Control Plane Summary ==========")
-		logger.StatsLog.Infof("Total Registrations Completed : %d", totalRegs)
-		logger.StatsLog.Infof("Total Duration                : %v", totalDuration)
-		logger.StatsLog.Infof("Registrations per second (RPS): %.2f", rps)
-		logger.StatsLog.Infof("===========================================")
-	}
-
-	// for _, ue := range ues {
-	// 	for _, s := range UeStatsTable[ue].Reg {
-	// 		logger.StatsLog.Infof("UE: %s, TotalRegTime[us]: %d, RegReqAuthReq[us]: %d,  AuthRspSecMReq[us]: %d, SecModeRspICReq[us]: %d", UeStatsTable[ue].Supi, s.RegProcTime, s.RegReqAuthReq, s.AuthRspSecMReq, s.SecModeRspICReq)
-	// 	}
-	// 	for _, s := range UeStatsTable[ue].Pdu {
-	// 		logger.StatsLog.Infof("UE: %s, TotalPduEstTime[us]: %d, PduSessReqAccept[us]: %d", UeStatsTable[ue].Supi, s.PduSessProcTime, s.PduSessReqAccept)
-	// 	}
-	// 	for _, s := range UeStatsTable[ue].Ctxrel {
-	// 		logger.StatsLog.Infof("UE: %s, TotalCtxReleaseTime[us]: %d, CtxRelReqCmdTime[us]: %d", UeStatsTable[ue].Supi, s.CtxReleaseProcTime, s.CtxRelReqCmdTime)
-	// 	}
-	// 	for _, s := range UeStatsTable[ue].Svc {
-	// 		logger.StatsLog.Infof("UE: %s, TotalServiceReqTime[us]: %d, ServReqAccTime[us]: %d", UeStatsTable[ue].Supi, s.ServiceReqProcTime, s.ServReqAccTime)
-	// 	}
-	// 	for _, s := range UeStatsTable[ue].Dreg {
-	// 		logger.StatsLog.Infof("UE: %s, TotalDeregistrationTime[us]: %d, DregReqAccTime[us]: %d", UeStatsTable[ue].Supi, s.DeregistrationProcTime, s.DregReqAccTime)
-	// 	}
+	// 	logger.StatsLog.Infof("========== Control Plane Summary ==========")
+	// 	logger.StatsLog.Infof("Total Registrations Completed : %d", totalRegs)
+	// 	logger.StatsLog.Infof("Total Duration                : %v", totalDuration)
+	// 	logger.StatsLog.Infof("Registrations per second (RPS): %.2f", rps)
+	// 	logger.StatsLog.Infof("===========================================")
 	// }
+
+	for _, ue := range ues {
+		for _, s := range UeStatsTable[ue].Reg {
+			logger.StatsLog.Infof("UE: %s, TotalRegTime[us]: %d, RegReqAuthReq[us]: %d,  AuthRspSecMReq[us]: %d, SecModeRspICReq[us]: %d", UeStatsTable[ue].Supi, s.RegProcTime, s.RegReqAuthReq, s.AuthRspSecMReq, s.SecModeRspICReq)
+		}
+		for _, s := range UeStatsTable[ue].Pdu {
+			logger.StatsLog.Infof("UE: %s, TotalPduEstTime[us]: %d, PduSessReqAccept[us]: %d", UeStatsTable[ue].Supi, s.PduSessProcTime, s.PduSessReqAccept)
+		}
+		for _, s := range UeStatsTable[ue].Ctxrel {
+			logger.StatsLog.Infof("UE: %s, TotalCtxReleaseTime[us]: %d, CtxRelReqCmdTime[us]: %d", UeStatsTable[ue].Supi, s.CtxReleaseProcTime, s.CtxRelReqCmdTime)
+		}
+		for _, s := range UeStatsTable[ue].Svc {
+			logger.StatsLog.Infof("UE: %s, TotalServiceReqTime[us]: %d, ServReqAccTime[us]: %d", UeStatsTable[ue].Supi, s.ServiceReqProcTime, s.ServReqAccTime)
+		}
+		for _, s := range UeStatsTable[ue].Dreg {
+			logger.StatsLog.Infof("UE: %s, TotalDeregistrationTime[us]: %d, DregReqAccTime[us]: %d", UeStatsTable[ue].Supi, s.DeregistrationProcTime, s.DregReqAccTime)
+		}
+	}
 	// for k1, v1 := range StatsTransTable {
 	// 	logger.StatsLog.Infoln("k1 ", k1, " v1: ", v1)
 	// }
