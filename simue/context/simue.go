@@ -6,6 +6,9 @@ package context
 
 import (
 	"sync"
+	"encoding/csv"
+	"os"
+	"strings"
 
 	"github.com/omec-project/gnbsim/common"
 	gnbctx "github.com/omec-project/gnbsim/gnodeb/context"
@@ -18,7 +21,34 @@ import (
 
 func init() {
 	simUeTable = make(map[string]*SimUe)
+
+	CustomCredentials = make(map[string]UeCredentials)
+	
+	// Read custom credentials from file
+	credFile := "custom_credentials.csv"
+	file, err := os.Open(credFile)
+	if err == nil {
+		defer file.Close()
+		reader := csv.NewReader(file)
+		records, err := reader.ReadAll()
+		if err == nil {
+			for _, record := range records {
+				if len(record) >= 3 {
+					imsi := "imsi-" + strings.TrimSpace(record[0])
+					key := strings.TrimSpace(record[1])
+					opc := strings.TrimSpace(record[2])
+					CustomCredentials[imsi] = UeCredentials{Key: key, OpC: opc}
+				}
+			}
+			logger.AppLog.Infoln("Custom credentials loaded from file:", credFile)
+		} else {
+			logger.AppLog.Errorf("Error reading custom credentials from file %s: %v", credFile, err)
+		}
+	} else {
+		logger.AppLog.Warnf("Custom credentials file %s not found. Proceeding without custom credentials.", credFile)
+	}
 }
+
 
 // SimUe controls the flow of messages between RealUe and GnbUe as per the test
 // profile. It is the central entry point for all events
@@ -54,20 +84,38 @@ var (
 	simUeTableMutex sync.RWMutex
 )
 
+type UeCredentials struct {
+	Key  string
+	OpC  string
+}
+
+var CustomCredentials = make(map[string]UeCredentials)
+
 func NewSimUe(supi string, gnb *gnbctx.GNodeB, profile *profctx.Profile, result chan *common.ProfileMessage) *SimUe {
 	simue := SimUe{}
 	simue.GnB = gnb
 	simue.Supi = supi
 	simue.ProfileCtx = profile
 	simue.ReadChan = make(chan common.InterfaceMessage, 5)
+
+	simue.Log = logger.SimUeLog.With(logger.FieldSupi, supi)
+
+	ueKey := profile.Key
+	ueOpc := profile.Opc
+	if creds, found := CustomCredentials[supi]; found {
+		ueKey = creds.Key
+		ueOpc = creds.OpC
+		simue.Log.Infof("Using custom credentials for SUPI %s: Key=%s, OpC=%s", supi, ueKey, ueOpc)
+	}
+
 	simue.RealUe = realuectx.NewRealUe(supi,
 		security.AlgCiphering128NEA0, security.AlgIntegrity128NIA2,
-		simue.ReadChan, profile.Plmn, profile.Key, profile.Opc, profile.SeqNum,
+		simue.ReadChan, profile.Plmn, ueKey, ueOpc, profile.SeqNum,
 		profile.Dnn, profile.SNssai)
 	simue.WriteRealUeChan = simue.RealUe.ReadChan
 	simue.WriteProfileChan = result
 
-	simue.Log = logger.SimUeLog.With(logger.FieldSupi, supi)
+
 
 	simue.Log.Debugln("created new SimUe context")
 	simue.MsgRspReceived = make(chan bool, 5)
